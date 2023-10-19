@@ -1,0 +1,180 @@
+name: 'Terraform'
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+
+  terraform-dev:
+    name: 'DEV'
+    runs-on: ubuntu-latest
+    env:
+      working-directory: ./env/dev
+    environment: development
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ap-northeast-2
+          aws-access-key-id: ${{ secrets.ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.SECRET_KEY }}
+      
+      - name: Terraform DEV init
+        run: terraform init
+        working-directory: ${{ env.working-directory }}
+      
+      - name: Terraform workspace new dev
+        run: |
+          if terraform workspace list | grep -q 'dev'; then
+            echo "Workspace 'dev' already exists. Switching to it."
+            terraform workspace select dev
+          else
+            echo "Workspace 'dev' dosen't exists. Creating to it."
+            terraform workspace new dev
+          fi
+        working-directory: ${{ env.working-directory }}
+      
+      - name: Terraform workspace select dev
+        run: terraform workspace select dev
+        working-directory: ${{ env.working-directory }}
+      
+      - name: Terraform Apply
+        working-directory: env/dev
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
+      
+      # Uncomment the lines below if needed
+      # - name: Terraform Destroy
+      #   working-directory: env/dev
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: terraform destroy -auto-approve -input=false
+
+  terraform-stg:
+    name: 'STG'
+    needs: terraform-dev
+    runs-on: ubuntu-latest
+    environment: stage
+    defaults:
+      run:
+        shell: bash
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ap-northeast-2
+          aws-access-key-id: ${{ secrets.ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.SECRET_KEY }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      
+      - name: Terraform STAGE init
+        working-directory: env/stg
+        run: terraform init
+      
+      - name: Terraform workspace new stg
+        working-directory: env/stg
+        run: |
+          if terraform workspace list | grep -q 'stg'; then
+            echo "Workspace 'stg' already exists. Switching to it."
+            terraform workspace select stg
+          else
+            echo "Workspace 'stg' dosen't exists. Creating to it."
+            terraform workspace new stg
+          fi
+      
+      - name: Terraform workspace select stg
+        working-directory: env/stg
+        run: terraform workspace select stg
+      
+      - name: Terraform Apply
+        working-directory: env/stg
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
+      
+      # Uncomment the lines below if needed
+      # - name: Terraform Destroy
+      #   working-directory: env/stg
+      #   run: terraform destroy -auto-approve -input=false
+
+  terraform-prd:
+    name: 'PRD'
+    needs: terraform-stg
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Terraform
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-region: ap-northeast-2
+          aws-access-key-id: ${{ secrets.ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.SECRET_KEY }}
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+      
+      - name: Terraform PRODUCTION init
+        run: terraform init
+        working-directory: env/prd
+      
+      - name: Run Pluralith CLI
+        run: |
+          curl -LO https://github.com/Pluralith/pluralith-cli/releases/download/v0.2.2/pluralith_cli_linux_amd64_v0.2.2
+          chmod +x pluralith_cli_linux_amd64_v0.2.2
+          sudo mv pluralith_cli_linux_amd64_v0.2.2 /usr/local/bin/pluralith
+          pluralith login --api-key ${{ secrets.PLURALITH_API_KEY }}
+          cd env/prd
+          pluralith graph --local-only
+      
+      - name: Upload Terraform Diagram
+        uses: actions/upload-artifact@v3
+        with:
+          name: Pluralith-artifact
+          path: /home/runner/work/bborder/bborder/env/prd/Pluralith_Diagram.pdf
+      
+      - name: Terraform workspace new prd
+        working-directory: env/prd
+        run: |
+          if terraform workspace list | grep -q 'prd'; then
+            echo "Workspace 'prd' already exists. Switching to it."
+            terraform workspace select prd
+          else
+            echo "Workspace 'prd' dosen't exists. Creating to it."
+            terraform workspace new prd
+          fi
+      
+      - name: Terraform workspace select prd
+        working-directory: env/prd
+        run: terraform workspace select prd
+      
+      - name: Terraform Apply
+        working-directory: env/prd
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve -input=false
+      
+      # Uncomment the lines below if needed
+      # - name: Terraform Destroy
+      #   working-directory: env/prd
+      #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      #   run: terraform destroy -auto-approve

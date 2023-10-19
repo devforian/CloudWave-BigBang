@@ -1,0 +1,12 @@
+variable "user_0" {}
+variable "user_1" {}
+variable "user_2" {}
+variable "user_3" {}
+variable "user_4" {}
+variable "user_5" {}
+variable "group_0" {}
+variable "group_1" {}
+variable "group_2" {}
+variable "group_3" {}
+variable "group_4" {}
+variable "group_5" {}
