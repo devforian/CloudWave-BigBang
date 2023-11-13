@@ -2,7 +2,7 @@
 
 This is IaC (Infrastructure as Code) for infrastructure.
 
-## Add Github Action
+## Add Github Actions
 
 ## Add pipeline (Github Action)
 
